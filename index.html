@@ -15,6 +15,7 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
+            overflow: hidden;
         }
 
         .header { text-align: center; margin-bottom: 10px; }
@@ -30,13 +31,31 @@
             align-items: center;
             margin-bottom: 15px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 10;
         }
+
+        #canvas-container { position: relative; }
 
         canvas { 
             background-color: #000; 
             border: 2px solid #444;
             image-rendering: pixelated;
         }
+
+        /* Game Over Popup */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            border: 2px solid #f44336;
+        }
+
+        #overlay h2 { color: #f44336; margin-bottom: 20px; }
 
         button {
             padding: 10px 20px;
@@ -45,12 +64,13 @@
             border-radius: 5px;
             font-weight: bold;
             transition: 0.2s;
+            margin: 0 5px;
         }
 
         #btnStart { background: #4CAF50; color: white; }
-        #btnStart:hover { background: #45a049; }
         #btnStop { background: #f44336; color: white; }
-        #btnStop:hover { background: #da190b; }
+        #btnReset { background: #2196F3; color: white; }
+        .btn-retry { background: #ffffff; color: #000; }
 
         .stat-item { font-size: 0.9rem; font-weight: bold; }
         .green { color: #4CAF50; }
@@ -71,6 +91,7 @@
         <div class="controls">
             <button id="btnStart">START</button>
             <button id="btnStop">STOP</button>
+            <button id="btnReset">RESET</button>
         </div>
         <div class="stat-item green">Collectors: <span id="c-coll">0</span></div>
         <div class="stat-item yellow">Builders: <span id="c-build">0</span></div>
@@ -78,20 +99,24 @@
         <div class="stat-item white">Base Progress: <span id="c-base">0</span></div>
     </div>
 
-    <canvas id="ecoCanvas"></canvas>
+    <div id="canvas-container">
+        <canvas id="ecoCanvas"></canvas>
+        <div id="overlay">
+            <h2>PREDATORS ARE DEAD</h2>
+            <button class="btn-retry" onclick="resetSim()">RESTART SIMULATION</button>
+        </div>
+    </div>
 
     <div class="legend">
-        [Green + Square] = Food | [Green Dot] = Collector | [Yellow Dot] = Builder | [Red Dot] = Predator
+        [Green Square] = Food | [Green Dot] = Collector | [Yellow Dot] = Builder | [Red Dot] = Predator
     </div>
 
 <script>
-/**
- * SIMULATION CONFIGURATION
- */
-const GRID_SIZE = 25; // Matches the C++ logic of a fixed grid
+const GRID_SIZE = 25;
 const CELL_SIZE = 25; 
 const canvas = document.getElementById('ecoCanvas');
 const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
 
 canvas.width = GRID_SIZE * CELL_SIZE;
 canvas.height = GRID_SIZE * CELL_SIZE;
@@ -99,53 +124,32 @@ canvas.height = GRID_SIZE * CELL_SIZE;
 let running = false;
 const BASE_POS = { x: 12, y: 12 };
 
-/**
- * BASE ENTITY CLASS (C++ Entity)
- */
 class Agent {
     constructor(x, y, energy, color) {
-        this.x = x;
-        this.y = y;
-        this.energy = energy;
-        this.maxEnergy = energy;
-        this.color = color;
-        this.alive = true;
+        this.x = x; this.y = y;
+        this.energy = energy; this.maxEnergy = energy;
+        this.color = color; this.alive = true;
     }
-
     moveRandom() {
         this.x = Math.max(0, Math.min(GRID_SIZE - 1, this.x + (Math.floor(Math.random() * 3) - 1)));
         this.y = Math.max(0, Math.min(GRID_SIZE - 1, this.y + (Math.floor(Math.random() * 3) - 1)));
     }
 }
 
-/**
- * COLLECTORS (Green)
- * Goal: Find green food, bring it back to base to generate "Resources".
- */
 class Collector extends Agent {
-    constructor(x, y) { 
-        super(x, y, 100, "#4CAF50"); 
-        this.hasFood = false; 
-    }
-
+    constructor(x, y) { super(x, y, 100, "#4CAF50"); this.hasFood = false; }
     update(env) {
         if (!this.hasFood) {
-            // Searching for food
             const fIdx = env.food.findIndex(f => f.x === this.x && f.y === this.y);
-            if (fIdx !== -1) { 
-                this.hasFood = true; 
-                env.food.splice(fIdx, 1); 
-            }
+            if (fIdx !== -1) { this.hasFood = true; env.food.splice(fIdx, 1); }
             this.moveRandom();
         } else {
-            // Pathfind to Base
             if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
             if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
-            
             if (this.x === BASE_POS.x && this.y === BASE_POS.y) {
                 this.hasFood = false;
-                env.baseResources += 30; // Deposit resources
-                this.energy = this.maxEnergy; // Refuel at base
+                env.baseResources += 30;
+                this.energy = this.maxEnergy;
             }
         }
         this.energy -= 0.4;
@@ -153,19 +157,10 @@ class Collector extends Agent {
     }
 }
 
-/**
- * BUILDERS (Yellow)
- * Goal: Stay near base, consume "Resources" to increase "Base Progress".
- */
 class Builder extends Agent {
-    constructor(x, y) { 
-        super(x, y, 100, "#FFEB3B"); 
-    }
-
+    constructor(x, y) { super(x, y, 100, "#FFEB3B"); }
     update(env) {
-        // Stay within 3 squares of base
         const distToBase = Math.abs(this.x - BASE_POS.x) + Math.abs(this.y - BASE_POS.y);
-        
         if (distToBase > 3) {
             if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
             if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
@@ -173,7 +168,7 @@ class Builder extends Agent {
             this.moveRandom();
             if (env.baseResources > 0) {
                 env.baseResources -= 1; 
-                env.baseConstruction += 0.1; // Building progress
+                env.baseConstruction += 0.1;
                 this.energy = Math.min(this.maxEnergy, this.energy + 2);
             }
         }
@@ -182,106 +177,57 @@ class Builder extends Agent {
     }
 }
 
-/**
- * PREDATORS (Red)
- * Goal: Eat Collectors or Builders. They die quickly without food.
- */
 class Predator extends Agent {
-    constructor(x, y) { 
-        super(x, y, 80, "#f44336"); 
-    }
-
+    constructor(x, y) { super(x, y, 80, "#f44336"); }
     update(env) {
-        // Check current square for prey
         const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y && a.alive);
-        
-        if (prey) {
-            prey.alive = false;
-            this.energy = this.maxEnergy; // Fully restored after eating
-        }
-
-        // Predators move 2 steps per turn (Hunting speed)
+        if (prey) { prey.alive = false; this.energy = this.maxEnergy; }
         for(let i=0; i<2; i++) this.moveRandom();
-
-        this.energy -= 2.2; // Aggressive starvation rate
+        this.energy -= 2.5; // High starvation rate
         if (this.energy <= 0) this.alive = false;
     }
 }
 
-/**
- * ENVIRONMENT (The Grid Handler)
- */
 const world = {
-    agents: [],
-    food: [],
-    baseResources: 0,
-    baseConstruction: 0,
-
+    agents: [], food: [], baseResources: 0, baseConstruction: 0,
     init() {
+        this.agents = []; this.food = []; this.baseResources = 0; this.baseConstruction = 0;
         for(let i=0; i<12; i++) this.agents.push(new Collector(rand(GRID_SIZE), rand(GRID_SIZE)));
         for(let i=0; i<6; i++) this.agents.push(new Builder(BASE_POS.x, BASE_POS.y));
         for(let i=0; i<3; i++) this.agents.push(new Predator(rand(GRID_SIZE), rand(GRID_SIZE)));
+        overlay.style.display = 'none';
     },
-
     update() {
-        // Spawn green food occasionally
-        if (Math.random() < 0.4) {
-            this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
-        }
-
-        this.agents.forEach(a => {
-            if (a.alive) a.update(this);
-        });
-
-        // Remove dead agents (Starved or Eaten)
+        if (Math.random() < 0.4) this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
+        this.agents.forEach(a => { if (a.alive) a.update(this); });
         this.agents = this.agents.filter(a => a.alive);
-    },
 
+        // Check for Predator extinction
+        const predatorCount = this.agents.filter(a => a instanceof Predator).length;
+        if (predatorCount === 0) {
+            running = false;
+            overlay.style.display = 'flex';
+        }
+    },
     draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // 1. Draw Visual Grid Lines
         ctx.strokeStyle = "#1a1a1a";
-        ctx.lineWidth = 1;
         for (let i = 0; i <= GRID_SIZE; i++) {
             ctx.beginPath(); ctx.moveTo(i * CELL_SIZE, 0); ctx.lineTo(i * CELL_SIZE, canvas.height); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, i * CELL_SIZE); ctx.lineTo(canvas.width, i * CELL_SIZE); ctx.stroke();
         }
-
-        // 2. Draw The Base
-        const baseViewSize = 15 + Math.floor(this.baseConstruction / 5);
+        const bSize = 15 + Math.floor(this.baseConstruction / 5);
         ctx.fillStyle = "#333";
-        ctx.fillRect(BASE_POS.x * CELL_SIZE - baseViewSize/4, BASE_POS.y * CELL_SIZE - baseViewSize/4, baseViewSize, baseViewSize);
-        ctx.strokeStyle = "#555";
-        ctx.strokeRect(BASE_POS.x * CELL_SIZE - baseViewSize/4, BASE_POS.y * CELL_SIZE - baseViewSize/4, baseViewSize, baseViewSize);
-
-        // 3. Draw Food (Green Squares)
+        ctx.fillRect(BASE_POS.x * CELL_SIZE - bSize/4, BASE_POS.y * CELL_SIZE - bSize/4, bSize, bSize);
         ctx.fillStyle = "#4CAF50";
-        this.food.forEach(f => {
-            ctx.fillRect(f.x * CELL_SIZE + 8, f.y * CELL_SIZE + 8, 8, 8);
-        });
-
-        // 4. Draw Agents (Dots)
+        this.food.forEach(f => ctx.fillRect(f.x * CELL_SIZE + 8, f.y * CELL_SIZE + 8, 8, 8));
         this.agents.forEach(a => {
             ctx.fillStyle = a.color;
-            ctx.beginPath();
-            ctx.arc(a.x * CELL_SIZE + CELL_SIZE/2, a.y * CELL_SIZE + CELL_SIZE/2, 7, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Carry Indicator for Collectors
+            ctx.beginPath(); ctx.arc(a.x * CELL_SIZE + 12.5, a.y * CELL_SIZE + 12.5, 7, 0, 7); ctx.fill();
             if (a instanceof Collector && a.hasFood) {
-                ctx.fillStyle = "#fff";
-                ctx.fillRect(a.x * CELL_SIZE + 10, a.y * CELL_SIZE + 10, 5, 5);
+                ctx.fillStyle = "#fff"; ctx.fillRect(a.x * CELL_SIZE + 10, a.y * CELL_SIZE + 10, 5, 5);
             }
-
-            // Energy Bar
-            ctx.fillStyle = "rgba(255,255,255,0.3)";
-            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE, 15, 2);
-            ctx.fillStyle = a.color;
-            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE, (a.energy / a.maxEnergy) * 15, 2);
         });
-
-        // 5. Update UI
         document.getElementById('c-coll').innerText = this.agents.filter(a => a instanceof Collector).length;
         document.getElementById('c-build').innerText = this.agents.filter(a => a instanceof Builder).length;
         document.getElementById('c-pred').innerText = this.agents.filter(a => a instanceof Predator).length;
@@ -289,26 +235,20 @@ const world = {
     }
 };
 
-// Helpers
 function rand(m) { return Math.floor(Math.random() * m); }
+function resetSim() { world.init(); running = false; world.draw(); }
 
-// Controls
-document.getElementById('btnStart').onclick = () => { running = true; };
-document.getElementById('btnStop').onclick = () => { running = false; };
+document.getElementById('btnStart').onclick = () => running = true;
+document.getElementById('btnStop').onclick = () => running = false;
+document.getElementById('btnReset').onclick = resetSim;
 
-// Main Loop
 world.init();
-function loop(time) {
-    if (running) {
-        world.update();
-    }
+function loop() {
+    if (running) world.update();
     world.draw();
-    setTimeout(() => {
-        requestAnimationFrame(loop);
-    }, 100); // ~10 FPS for "Retro" terminal feel
+    setTimeout(loop, 100);
 }
-requestAnimationFrame(loop);
-
+loop();
 </script>
 </body>
 </html>
