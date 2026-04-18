@@ -3,69 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ecosystem: Workers & Predators</title>
+    <title>Autonomous Ecosystem: Collectors & Builders</title>
     <style>
         body {
-            background-color: #121212;
-            color: #eee;
-            font-family: 'Segoe UI', sans-serif;
+            background-color: #0f0f0f;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
         }
 
+        .header { text-align: center; margin-bottom: 10px; }
+        h1 { color: #4CAF50; margin: 0; font-size: 1.5rem; }
+
         .ui-panel {
-            margin-bottom: 10px;
-            display: flex;
-            gap: 15px;
-            background: #222;
+            background: #1e1e1e;
             padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #444;
+            border-radius: 10px;
+            border: 1px solid #333;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
 
         canvas { 
             background-color: #000; 
-            border: 3px solid #333;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 2px solid #444;
+            image-rendering: pixelated;
         }
 
         button {
-            padding: 8px 20px;
+            padding: 10px 20px;
             cursor: pointer;
             border: none;
-            border-radius: 4px;
+            border-radius: 5px;
             font-weight: bold;
+            transition: 0.2s;
         }
 
         #btnStart { background: #4CAF50; color: white; }
+        #btnStart:hover { background: #45a049; }
         #btnStop { background: #f44336; color: white; }
+        #btnStop:hover { background: #da190b; }
 
-        .stat { font-size: 0.85rem; font-weight: bold; }
-        .col-green { color: #4CAF50; }
-        .col-yellow { color: #FFEB3B; }
-        .col-red { color: #f44336; }
+        .stat-item { font-size: 0.9rem; font-weight: bold; }
+        .green { color: #4CAF50; }
+        .yellow { color: #FFEB3B; }
+        .red { color: #f44336; }
+        .white { color: #fff; }
+
+        .legend { margin-top: 10px; font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
 
+    <div class="header">
+        <h1>Autonomous Ecosystem</h1>
+    </div>
+
     <div class="ui-panel">
-        <button id="btnStart">START</button>
-        <button id="btnStop">STOP</button>
-        <div class="stat col-green">Collectors: <span id="c-coll">0</span></div>
-        <div class="stat col-yellow">Builders: <span id="c-build">0</span></div>
-        <div class="stat col-red">Predators: <span id="c-pred">0</span></div>
-        <div class="stat" style="color:white">Base Level: <span id="c-base">0</span></div>
+        <div class="controls">
+            <button id="btnStart">START</button>
+            <button id="btnStop">STOP</button>
+        </div>
+        <div class="stat-item green">Collectors: <span id="c-coll">0</span></div>
+        <div class="stat-item yellow">Builders: <span id="c-build">0</span></div>
+        <div class="stat-item red">Predators: <span id="c-pred">0</span></div>
+        <div class="stat-item white">Base Progress: <span id="c-base">0</span></div>
     </div>
 
     <canvas id="ecoCanvas"></canvas>
 
+    <div class="legend">
+        [Green + Square] = Food | [Green Dot] = Collector | [Yellow Dot] = Builder | [Red Dot] = Predator
+    </div>
+
 <script>
-const GRID_SIZE = 24;
-const CELL_SIZE = 25;
+/**
+ * SIMULATION CONFIGURATION
+ */
+const GRID_SIZE = 25; // Matches the C++ logic of a fixed grid
+const CELL_SIZE = 25; 
 const canvas = document.getElementById('ecoCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -75,6 +99,9 @@ canvas.height = GRID_SIZE * CELL_SIZE;
 let running = false;
 const BASE_POS = { x: 12, y: 12 };
 
+/**
+ * BASE ENTITY CLASS (C++ Entity)
+ */
 class Agent {
     constructor(x, y, energy, color) {
         this.x = x;
@@ -91,21 +118,63 @@ class Agent {
     }
 }
 
+/**
+ * COLLECTORS (Green)
+ * Goal: Find green food, bring it back to base to generate "Resources".
+ */
 class Collector extends Agent {
-    constructor(x, y) { super(x, y, 100, "#4CAF50"); this.hasFood = false; }
+    constructor(x, y) { 
+        super(x, y, 100, "#4CAF50"); 
+        this.hasFood = false; 
+    }
+
     update(env) {
         if (!this.hasFood) {
+            // Searching for food
             const fIdx = env.food.findIndex(f => f.x === this.x && f.y === this.y);
-            if (fIdx !== -1) { this.hasFood = true; env.food.splice(fIdx, 1); }
+            if (fIdx !== -1) { 
+                this.hasFood = true; 
+                env.food.splice(fIdx, 1); 
+            }
             this.moveRandom();
         } else {
-            // Head back to base
+            // Pathfind to Base
             if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
             if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
+            
             if (this.x === BASE_POS.x && this.y === BASE_POS.y) {
                 this.hasFood = false;
-                env.baseResources += 20;
-                this.energy = this.maxEnergy;
+                env.baseResources += 30; // Deposit resources
+                this.energy = this.maxEnergy; // Refuel at base
+            }
+        }
+        this.energy -= 0.4;
+        if (this.energy <= 0) this.alive = false;
+    }
+}
+
+/**
+ * BUILDERS (Yellow)
+ * Goal: Stay near base, consume "Resources" to increase "Base Progress".
+ */
+class Builder extends Agent {
+    constructor(x, y) { 
+        super(x, y, 100, "#FFEB3B"); 
+    }
+
+    update(env) {
+        // Stay within 3 squares of base
+        const distToBase = Math.abs(this.x - BASE_POS.x) + Math.abs(this.y - BASE_POS.y);
+        
+        if (distToBase > 3) {
+            if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
+            if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
+        } else {
+            this.moveRandom();
+            if (env.baseResources > 0) {
+                env.baseResources -= 1; 
+                env.baseConstruction += 0.1; // Building progress
+                this.energy = Math.min(this.maxEnergy, this.energy + 2);
             }
         }
         this.energy -= 0.3;
@@ -113,40 +182,35 @@ class Collector extends Agent {
     }
 }
 
-class Builder extends Agent {
-    constructor(x, y) { super(x, y, 100, "#FFEB3B"); }
-    update(env) {
-        // Stay near base to build
-        if (Math.abs(this.x - BASE_POS.x) > 2 || Math.abs(this.y - BASE_POS.y) > 2) {
-            if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
-            if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
-        } else {
-            this.moveRandom();
-            if (env.baseResources > 0) {
-                env.baseResources -= 0.5;
-                env.baseConstruction += 0.2;
-            }
-        }
-        this.energy -= 0.2;
-        if (this.energy <= 0) this.alive = false;
-    }
-}
-
+/**
+ * PREDATORS (Red)
+ * Goal: Eat Collectors or Builders. They die quickly without food.
+ */
 class Predator extends Agent {
-    constructor(x, y) { super(x, y, 80, "#f44336"); }
+    constructor(x, y) { 
+        super(x, y, 80, "#f44336"); 
+    }
+
     update(env) {
-        // Hunt any worker
-        const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y);
+        // Check current square for prey
+        const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y && a.alive);
+        
         if (prey) {
             prey.alive = false;
-            this.energy = this.maxEnergy;
+            this.energy = this.maxEnergy; // Fully restored after eating
         }
+
+        // Predators move 2 steps per turn (Hunting speed)
         for(let i=0; i<2; i++) this.moveRandom();
-        this.energy -= 1.8; // High metabolism - dies without food
+
+        this.energy -= 2.2; // Aggressive starvation rate
         if (this.energy <= 0) this.alive = false;
     }
 }
 
+/**
+ * ENVIRONMENT (The Grid Handler)
+ */
 const world = {
     agents: [],
     food: [],
@@ -154,41 +218,70 @@ const world = {
     baseConstruction: 0,
 
     init() {
-        for(let i=0; i<10; i++) this.agents.push(new Collector(rand(GRID_SIZE), rand(GRID_SIZE)));
-        for(let i=0; i<5; i++) this.agents.push(new Builder(BASE_POS.x, BASE_POS.y));
+        for(let i=0; i<12; i++) this.agents.push(new Collector(rand(GRID_SIZE), rand(GRID_SIZE)));
+        for(let i=0; i<6; i++) this.agents.push(new Builder(BASE_POS.x, BASE_POS.y));
         for(let i=0; i<3; i++) this.agents.push(new Predator(rand(GRID_SIZE), rand(GRID_SIZE)));
     },
 
     update() {
-        if (Math.random() < 0.3) this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
-        this.agents.forEach(a => a.update(this));
+        // Spawn green food occasionally
+        if (Math.random() < 0.4) {
+            this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
+        }
+
+        this.agents.forEach(a => {
+            if (a.alive) a.update(this);
+        });
+
+        // Remove dead agents (Starved or Eaten)
         this.agents = this.agents.filter(a => a.alive);
     },
 
     draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Draw Base
-        const baseSize = 10 + Math.floor(this.baseConstruction / 10);
-        ctx.fillStyle = "#555";
-        ctx.fillRect(BASE_POS.x*CELL_SIZE - baseSize/2 + 12, BASE_POS.y*CELL_SIZE - baseSize/2 + 12, baseSize, baseSize);
+        // 1. Draw Visual Grid Lines
+        ctx.strokeStyle = "#1a1a1a";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= GRID_SIZE; i++) {
+            ctx.beginPath(); ctx.moveTo(i * CELL_SIZE, 0); ctx.lineTo(i * CELL_SIZE, canvas.height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i * CELL_SIZE); ctx.lineTo(canvas.width, i * CELL_SIZE); ctx.stroke();
+        }
 
-        // Draw Food
+        // 2. Draw The Base
+        const baseViewSize = 15 + Math.floor(this.baseConstruction / 5);
+        ctx.fillStyle = "#333";
+        ctx.fillRect(BASE_POS.x * CELL_SIZE - baseViewSize/4, BASE_POS.y * CELL_SIZE - baseViewSize/4, baseViewSize, baseViewSize);
+        ctx.strokeStyle = "#555";
+        ctx.strokeRect(BASE_POS.x * CELL_SIZE - baseViewSize/4, BASE_POS.y * CELL_SIZE - baseViewSize/4, baseViewSize, baseViewSize);
+
+        // 3. Draw Food (Green Squares)
         ctx.fillStyle = "#4CAF50";
-        this.food.forEach(f => ctx.beginPath() || ctx.arc(f.x*CELL_SIZE+12, f.y*CELL_SIZE+12, 4, 0, 7) || ctx.fill());
+        this.food.forEach(f => {
+            ctx.fillRect(f.x * CELL_SIZE + 8, f.y * CELL_SIZE + 8, 8, 8);
+        });
 
-        // Draw Agents
+        // 4. Draw Agents (Dots)
         this.agents.forEach(a => {
             ctx.fillStyle = a.color;
             ctx.beginPath();
-            ctx.arc(a.x*CELL_SIZE+12, a.y*CELL_SIZE+12, 7, 0, 7);
+            ctx.arc(a.x * CELL_SIZE + CELL_SIZE/2, a.y * CELL_SIZE + CELL_SIZE/2, 7, 0, Math.PI * 2);
             ctx.fill();
+
+            // Carry Indicator for Collectors
             if (a instanceof Collector && a.hasFood) {
-                ctx.fillStyle = "white";
-                ctx.fillRect(a.x*CELL_SIZE+10, a.y*CELL_SIZE+10, 4, 4);
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(a.x * CELL_SIZE + 10, a.y * CELL_SIZE + 10, 5, 5);
             }
+
+            // Energy Bar
+            ctx.fillStyle = "rgba(255,255,255,0.3)";
+            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE, 15, 2);
+            ctx.fillStyle = a.color;
+            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE, (a.energy / a.maxEnergy) * 15, 2);
         });
 
+        // 5. Update UI
         document.getElementById('c-coll').innerText = this.agents.filter(a => a instanceof Collector).length;
         document.getElementById('c-build').innerText = this.agents.filter(a => a instanceof Builder).length;
         document.getElementById('c-pred').innerText = this.agents.filter(a => a instanceof Predator).length;
@@ -196,17 +289,26 @@ const world = {
     }
 };
 
+// Helpers
 function rand(m) { return Math.floor(Math.random() * m); }
-document.getElementById('btnStart').onclick = () => running = true;
-document.getElementById('btnStop').onclick = () => running = false;
 
+// Controls
+document.getElementById('btnStart').onclick = () => { running = true; };
+document.getElementById('btnStop').onclick = () => { running = false; };
+
+// Main Loop
 world.init();
-function loop() {
-    if (running) world.update();
+function loop(time) {
+    if (running) {
+        world.update();
+    }
     world.draw();
-    setTimeout(loop, 120);
+    setTimeout(() => {
+        requestAnimationFrame(loop);
+    }, 100); // ~10 FPS for "Retro" terminal feel
 }
-loop();
+requestAnimationFrame(loop);
+
 </script>
 </body>
 </html>
