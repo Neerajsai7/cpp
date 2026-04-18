@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autonomous Ecosystem: Collectors & Builders</title>
+    <title>Balanced Ecosystem: Workers & Predators</title>
     <style>
         body {
             background-color: #0f0f0f;
@@ -42,11 +42,10 @@
             image-rendering: pixelated;
         }
 
-        /* Game Over Popup */
         #overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.85);
             display: none;
             flex-direction: column;
             align-items: center;
@@ -55,7 +54,7 @@
             border: 2px solid #f44336;
         }
 
-        #overlay h2 { color: #f44336; margin-bottom: 20px; }
+        #overlay h2 { color: #f44336; margin-bottom: 20px; letter-spacing: 2px; }
 
         button {
             padding: 10px 20px;
@@ -65,6 +64,7 @@
             font-weight: bold;
             transition: 0.2s;
             margin: 0 5px;
+            text-transform: uppercase;
         }
 
         #btnStart { background: #4CAF50; color: white; }
@@ -76,7 +76,6 @@
         .green { color: #4CAF50; }
         .yellow { color: #FFEB3B; }
         .red { color: #f44336; }
-        .white { color: #fff; }
 
         .legend { margin-top: 10px; font-size: 0.8rem; color: #888; }
     </style>
@@ -84,31 +83,31 @@
 <body>
 
     <div class="header">
-        <h1>Autonomous Ecosystem</h1>
+        <h1>Autonomous Ecosystem Simulator</h1>
     </div>
 
     <div class="ui-panel">
         <div class="controls">
-            <button id="btnStart">START</button>
-            <button id="btnStop">STOP</button>
-            <button id="btnReset">RESET</button>
+            <button id="btnStart">Start</button>
+            <button id="btnStop">Stop</button>
+            <button id="btnReset">Reset</button>
         </div>
         <div class="stat-item green">Collectors: <span id="c-coll">0</span></div>
         <div class="stat-item yellow">Builders: <span id="c-build">0</span></div>
         <div class="stat-item red">Predators: <span id="c-pred">0</span></div>
-        <div class="stat-item white">Base Progress: <span id="c-base">0</span></div>
+        <div class="stat-item" style="color:#fff">Progress: <span id="c-base">0</span></div>
     </div>
 
     <div id="canvas-container">
         <canvas id="ecoCanvas"></canvas>
         <div id="overlay">
-            <h2>PREDATORS ARE DEAD</h2>
-            <button class="btn-retry" onclick="resetSim()">RESTART SIMULATION</button>
+            <h2>PREDATORS EXTINCT</h2>
+            <button class="btn-retry" onclick="resetSim()">Restart Simulation</button>
         </div>
     </div>
 
     <div class="legend">
-        [Green Square] = Food | [Green Dot] = Collector | [Yellow Dot] = Builder | [Red Dot] = Predator
+        Green = Collectors | Yellow = Builders | Red = Predators | Square = Food | White Box = Carrying Food
     </div>
 
 <script>
@@ -148,28 +147,8 @@ class Collector extends Agent {
             if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
             if (this.x === BASE_POS.x && this.y === BASE_POS.y) {
                 this.hasFood = false;
-                env.baseResources += 30;
+                env.baseResources += 40;
                 this.energy = this.maxEnergy;
-            }
-        }
-        this.energy -= 0.4;
-        if (this.energy <= 0) this.alive = false;
-    }
-}
-
-class Builder extends Agent {
-    constructor(x, y) { super(x, y, 100, "#FFEB3B"); }
-    update(env) {
-        const distToBase = Math.abs(this.x - BASE_POS.x) + Math.abs(this.y - BASE_POS.y);
-        if (distToBase > 3) {
-            if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
-            if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
-        } else {
-            this.moveRandom();
-            if (env.baseResources > 0) {
-                env.baseResources -= 1; 
-                env.baseConstruction += 0.1;
-                this.energy = Math.min(this.maxEnergy, this.energy + 2);
             }
         }
         this.energy -= 0.3;
@@ -177,13 +156,54 @@ class Builder extends Agent {
     }
 }
 
-class Predator extends Agent {
-    constructor(x, y) { super(x, y, 80, "#f44336"); }
+class Builder extends Agent {
+    constructor(x, y) { super(x, y, 100, "#FFEB3B"); }
     update(env) {
+        const dist = Math.abs(this.x - BASE_POS.x) + Math.abs(this.y - BASE_POS.y);
+        if (dist > 3) {
+            if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
+            if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
+        } else {
+            this.moveRandom();
+            if (env.baseResources > 0) {
+                env.baseResources -= 1; 
+                env.baseConstruction += 0.15;
+                this.energy = Math.min(this.maxEnergy, this.energy + 1);
+            }
+        }
+        this.energy -= 0.2;
+        if (this.energy <= 0) this.alive = false;
+    }
+}
+
+class Predator extends Agent {
+    constructor(x, y) { super(x, y, 100, "#f44336"); }
+    update(env) {
+        // 1. Check for prey to eat
         const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y && a.alive);
-        if (prey) { prey.alive = false; this.energy = this.maxEnergy; }
-        for(let i=0; i<2; i++) this.moveRandom();
-        this.energy -= 2.5; // High starvation rate
+        if (prey) { 
+            prey.alive = false; 
+            this.energy = this.maxEnergy + 20; 
+        }
+
+        // 2. Hunting Logic: Find nearest worker within 6 squares
+        let target = null;
+        let minDist = 7;
+        env.agents.forEach(a => {
+            if ((a instanceof Collector || a instanceof Builder) && a.alive) {
+                let d = Math.abs(this.x - a.x) + Math.abs(this.y - a.y);
+                if (d < minDist) { minDist = d; target = a; }
+            }
+        });
+
+        if (target) {
+            if (this.x < target.x) this.x++; else if (this.x > target.x) this.x--;
+            if (this.y < target.y) this.y++; else if (this.y > target.y) this.y--;
+        } else {
+            this.moveRandom();
+        }
+
+        this.energy -= 1.2; // Optimized metabolic rate
         if (this.energy <= 0) this.alive = false;
     }
 }
@@ -192,19 +212,17 @@ const world = {
     agents: [], food: [], baseResources: 0, baseConstruction: 0,
     init() {
         this.agents = []; this.food = []; this.baseResources = 0; this.baseConstruction = 0;
-        for(let i=0; i<12; i++) this.agents.push(new Collector(rand(GRID_SIZE), rand(GRID_SIZE)));
-        for(let i=0; i<6; i++) this.agents.push(new Builder(BASE_POS.x, BASE_POS.y));
-        for(let i=0; i<3; i++) this.agents.push(new Predator(rand(GRID_SIZE), rand(GRID_SIZE)));
+        for(let i=0; i<15; i++) this.agents.push(new Collector(rand(GRID_SIZE), rand(GRID_SIZE)));
+        for(let i=0; i<8; i++) this.agents.push(new Builder(BASE_POS.x, BASE_POS.y));
+        for(let i=0; i<6; i++) this.agents.push(new Predator(rand(GRID_SIZE), rand(GRID_SIZE)));
         overlay.style.display = 'none';
     },
     update() {
-        if (Math.random() < 0.4) this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
+        if (Math.random() < 0.5) this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
         this.agents.forEach(a => { if (a.alive) a.update(this); });
         this.agents = this.agents.filter(a => a.alive);
 
-        // Check for Predator extinction
-        const predatorCount = this.agents.filter(a => a instanceof Predator).length;
-        if (predatorCount === 0) {
+        if (this.agents.filter(a => a instanceof Predator).length === 0) {
             running = false;
             overlay.style.display = 'flex';
         }
@@ -220,13 +238,17 @@ const world = {
         ctx.fillStyle = "#333";
         ctx.fillRect(BASE_POS.x * CELL_SIZE - bSize/4, BASE_POS.y * CELL_SIZE - bSize/4, bSize, bSize);
         ctx.fillStyle = "#4CAF50";
-        this.food.forEach(f => ctx.fillRect(f.x * CELL_SIZE + 8, f.y * CELL_SIZE + 8, 8, 8));
+        this.food.forEach(f => ctx.fillRect(f.x * CELL_SIZE + 8, f.y * CELL_SIZE + 8, 9, 9));
         this.agents.forEach(a => {
             ctx.fillStyle = a.color;
             ctx.beginPath(); ctx.arc(a.x * CELL_SIZE + 12.5, a.y * CELL_SIZE + 12.5, 7, 0, 7); ctx.fill();
             if (a instanceof Collector && a.hasFood) {
                 ctx.fillStyle = "#fff"; ctx.fillRect(a.x * CELL_SIZE + 10, a.y * CELL_SIZE + 10, 5, 5);
             }
+            ctx.fillStyle = "rgba(255,255,255,0.2)";
+            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, 15, 2);
+            ctx.fillStyle = a.color;
+            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, (Math.max(0, a.energy) / a.maxEnergy) * 15, 2);
         });
         document.getElementById('c-coll').innerText = this.agents.filter(a => a instanceof Collector).length;
         document.getElementById('c-build').innerText = this.agents.filter(a => a instanceof Builder).length;
@@ -238,7 +260,7 @@ const world = {
 function rand(m) { return Math.floor(Math.random() * m); }
 function resetSim() { world.init(); running = false; world.draw(); }
 
-document.getElementById('btnStart').onclick = () => running = true;
+document.getElementById('btnStart').onclick = () => { running = true; overlay.style.display = 'none'; };
 document.getElementById('btnStop').onclick = () => running = false;
 document.getElementById('btnReset').onclick = resetSim;
 
@@ -246,7 +268,7 @@ world.init();
 function loop() {
     if (running) world.update();
     world.draw();
-    setTimeout(loop, 100);
+    setTimeout(loop, 110);
 }
 loop();
 </script>
