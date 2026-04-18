@@ -27,8 +27,28 @@
 
         canvas { background-color: #222; display: block; }
 
+        .controls {
+            margin: 15px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            transition: background 0.2s;
+            font-weight: bold;
+        }
+
+        #startBtn { background-color: #4CAF50; color: white; }
+        #startBtn:hover { background-color: #45a049; }
+        #stopBtn { background-color: #f44336; color: white; }
+        #stopBtn:hover { background-color: #da190b; }
+
         .stats {
-            margin-top: 15px;
             padding: 10px 20px;
             background: #333;
             border-radius: 8px;
@@ -41,64 +61,65 @@
             font-size: 0.9em;
             color: #aaa;
         }
-
-        b { color: #fff; }
     </style>
 </head>
 <body>
 
     <h1>Ecosystem Simulator</h1>
     
+    <div class="controls">
+        <button id="startBtn">START</button>
+        <button id="stopBtn">STOP</button>
+    </div>
+
     <div id="sim-container">
         <canvas id="ecosystemCanvas"></canvas>
     </div>
 
     <div class="stats">
-        <div>Gatherers: <span id="count-g" style="color: #4CAF50; font-weight: bold;">0</span></div>
+        <div>Gatherers: <span id="count-g" style="color: #FFEB3B; font-weight: bold;">0</span></div>
         <div>Predators: <span id="count-p" style="color: #F44336; font-weight: bold;">0</span></div>
-        <div>Resources: <span id="count-r" style="color: #FFEB3B; font-weight: bold;">0</span></div>
+        <div>Resources: <span id="count-r" style="color: #4CAF50; font-weight: bold;">0</span></div>
     </div>
 
     <div class="legend">
-        <b>Green Dot</b>: Gatherer | <b>Red Dot</b>: Predator | <b>Yellow Star</b>: Food
+        <b style="color: #FFEB3B;">Yellow Dot</b>: Gatherer | <b style="color: #F44336;">Red Dot</b>: Predator | <b style="color: #4CAF50;">Green Star</b>: Food
     </div>
 
 <script>
-/**
- * REPLICATING THE C++ LOGIC IN JAVASCRIPT
- */
-
-const GRID_SIZE = 20; // 20x20 grid
-const CELL_SIZE = 30; // pixels per cell
+const GRID_SIZE = 20;
+const CELL_SIZE = 30;
 const canvas = document.getElementById('ecosystemCanvas');
 const ctx = canvas.getContext('2d');
 
 canvas.width = GRID_SIZE * CELL_SIZE;
 canvas.height = GRID_SIZE * CELL_SIZE;
 
-// --- 1. BASE ENTITY ---
+let isRunning = false;
+
+// --- BASE ENTITY ---
 class Entity {
-    constructor(x, y, symbol) {
+    constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.symbol = symbol;
     }
 }
 
-// --- 2. RESOURCE ---
+// --- RESOURCE ---
 class Resource extends Entity {
     constructor(x, y) {
-        super(x, y, '*');
-        this.nutritionalValue = 20;
+        super(x, y);
+        this.nutritionalValue = 25;
     }
 }
 
-// --- 3. ABSTRACT AGENT ---
+// --- AGENT BASE ---
 class Agent extends Entity {
-    constructor(x, y, symbol, hp, en) {
-        super(x, y, symbol);
+    constructor(x, y, hp, en) {
+        super(x, y);
         this.health = hp;
         this.energy = en;
+        this.maxEnergy = en;
         this.alive = true;
     }
 
@@ -106,52 +127,50 @@ class Agent extends Entity {
         return this.alive && this.energy > 0;
     }
 
-    drainEnergy(amount = 1) {
+    drainEnergy(amount) {
         this.energy -= amount;
-        if (this.energy <= 0) this.alive = false;
+        if (this.energy <= 0) {
+            this.energy = 0;
+            this.alive = false;
+        }
     }
-
-    // "act" is meant to be overridden (Polymorphism)
-    act(env) {}
 }
 
-// --- 4. GATHERER ---
+// --- GATHERER (YELLOW) ---
 class GathererAgent extends Agent {
     constructor(x, y) {
-        super(x, y, 'G', 50, 60);
+        super(x, y, 50, 60);
     }
 
     act(env) {
-        // Check for food
         const res = env.getResourceAt(this.x, this.y);
         if (res) {
-            this.energy += res.nutritionalValue;
+            this.energy = Math.min(this.maxEnergy, this.energy + res.nutritionalValue);
             env.removeResource(res);
             return;
         }
-
-        // Random Move
         this.x = Math.max(0, Math.min(GRID_SIZE - 1, this.x + (Math.floor(Math.random() * 3) - 1)));
         this.y = Math.max(0, Math.min(GRID_SIZE - 1, this.y + (Math.floor(Math.random() * 3) - 1)));
     }
 }
 
-// --- 5. PREDATOR ---
+// --- PREDATOR (RED) ---
 class PredatorAgent extends Agent {
     constructor(x, y) {
-        super(x, y, 'P', 100, 80);
+        // Predators have higher energy but consume it faster
+        super(x, y, 100, 100);
     }
 
     act(env) {
-        // Check for Gatherers to eat
         const prey = env.agents.find(a => a instanceof GathererAgent && a.x === this.x && a.y === this.y && a.isAlive());
+        
         if (prey) {
             prey.alive = false;
-            this.energy += 50;
+            this.energy = Math.min(this.maxEnergy, this.energy + 40);
             return;
         }
 
-        // Move twice as fast (random but two steps)
+        // Predators move 2 steps (hunting)
         for(let i=0; i<2; i++) {
             this.x = Math.max(0, Math.min(GRID_SIZE - 1, this.x + (Math.floor(Math.random() * 3) - 1)));
             this.y = Math.max(0, Math.min(GRID_SIZE - 1, this.y + (Math.floor(Math.random() * 3) - 1)));
@@ -159,23 +178,11 @@ class PredatorAgent extends Agent {
     }
 }
 
-// --- 6. ENVIRONMENT ---
+// --- ENVIRONMENT ---
 class Environment {
     constructor() {
         this.agents = [];
         this.resources = [];
-    }
-
-    addAgent(agent) { this.agents.push(agent); }
-
-    spawnResource() {
-        if (Math.random() < 0.2) { // 20% chance per frame
-            const rx = Math.floor(Math.random() * GRID_SIZE);
-            const ry = Math.floor(Math.random() * GRID_SIZE);
-            if (!this.getResourceAt(rx, ry)) {
-                this.resources.push(new Resource(rx, ry));
-            }
-        }
     }
 
     getResourceAt(x, y) {
@@ -187,73 +194,87 @@ class Environment {
     }
 
     update() {
-        this.spawnResource();
+        // Spawn food
+        if (Math.random() < 0.3) {
+            const rx = Math.floor(Math.random() * GRID_SIZE);
+            const ry = Math.floor(Math.random() * GRID_SIZE);
+            if (!this.getResourceAt(rx, ry)) this.resources.push(new Resource(rx, ry));
+        }
 
         this.agents.forEach(agent => {
             if (agent.isAlive()) {
                 agent.act(this);
-                agent.drainEnergy(0.2); // Slower drain for visual balance
+                // DRAIN LOGIC: Predators lose energy faster (3x) than gatherers
+                let drainRate = (agent instanceof PredatorAgent) ? 1.5 : 0.5;
+                agent.drainEnergy(drainRate);
             }
         });
 
-        // Cleanup dead
         this.agents = this.agents.filter(a => a.isAlive());
     }
 
     draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw Grid Lines
+        // Draw Grid
         ctx.strokeStyle = "#333";
         for(let i=0; i<=GRID_SIZE; i++) {
             ctx.beginPath(); ctx.moveTo(i*CELL_SIZE, 0); ctx.lineTo(i*CELL_SIZE, canvas.height); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, i*CELL_SIZE); ctx.lineTo(canvas.width, i*CELL_SIZE); ctx.stroke();
         }
 
-        // Draw Resources
+        // Draw Food (Green)
         this.resources.forEach(r => {
-            ctx.fillStyle = "#FFEB3B";
-            ctx.beginPath();
-            ctx.arc(r.x * CELL_SIZE + CELL_SIZE/2, r.y * CELL_SIZE + CELL_SIZE/2, 5, 0, Math.PI*2);
-            ctx.fill();
+            ctx.fillStyle = "#4CAF50";
+            ctx.fillRect(r.x * CELL_SIZE + 10, r.y * CELL_SIZE + 10, 10, 10);
         });
 
         // Draw Agents
         this.agents.forEach(a => {
-            ctx.fillStyle = (a instanceof GathererAgent) ? "#4CAF50" : "#F44336";
+            ctx.fillStyle = (a instanceof GathererAgent) ? "#FFEB3B" : "#F44336";
             ctx.beginPath();
             ctx.arc(a.x * CELL_SIZE + CELL_SIZE/2, a.y * CELL_SIZE + CELL_SIZE/2, 8, 0, Math.PI*2);
             ctx.fill();
-            // Energy bar (mini)
-            ctx.fillStyle = "white";
-            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, (a.energy/100)*20, 2);
+            
+            // Energy bar
+            ctx.fillStyle = "#555";
+            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, 20, 3);
+            ctx.fillStyle = (a.energy < 20) ? "red" : "white";
+            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, (a.energy/a.maxEnergy)*20, 3);
         });
 
-        // Update UI counters
         document.getElementById('count-g').innerText = this.agents.filter(a => a instanceof GathererAgent).length;
         document.getElementById('count-p').innerText = this.agents.filter(a => a instanceof PredatorAgent).length;
         document.getElementById('count-r').innerText = this.resources.length;
     }
 }
 
-// --- INITIALIZATION ---
 const env = new Environment();
 
-// Initial Population
-for (let i = 0; i < 15; i++) env.addAgent(new GathererAgent(Math.floor(Math.random()*GRID_SIZE), Math.floor(Math.random()*GRID_SIZE)));
-for (let i = 0; i < 4; i++) env.addAgent(new PredatorAgent(Math.floor(Math.random()*GRID_SIZE), Math.floor(Math.random()*GRID_SIZE)));
+// Setup Population
+function init() {
+    for (let i = 0; i < 15; i++) env.agents.push(new GathererAgent(Math.floor(Math.random()*GRID_SIZE), Math.floor(Math.random()*GRID_SIZE)));
+    for (let i = 0; i < 3; i++) env.agents.push(new PredatorAgent(Math.floor(Math.random()*GRID_SIZE), Math.floor(Math.random()*GRID_SIZE)));
+    env.draw();
+}
 
-// Simulation Loop
+// Buttons
+document.getElementById('startBtn').addEventListener('click', () => { isRunning = true; });
+document.getElementById('stopBtn').addEventListener('click', () => { isRunning = false; });
+
 let lastTime = 0;
 function loop(timestamp) {
-    if (timestamp - lastTime > 150) { // Slow down simulation to ~6 frames per second
+    if (isRunning && timestamp - lastTime > 150) {
         env.update();
         env.draw();
         lastTime = timestamp;
+    } else if (!isRunning) {
+        env.draw(); // Keep drawing so it doesn't look empty if resized/refreshed
     }
     requestAnimationFrame(loop);
 }
 
+init();
 requestAnimationFrame(loop);
 </script>
 </body>
