@@ -34,7 +34,26 @@
             z-index: 10;
         }
 
-        #canvas-container { position: relative; }
+        /* --- NEW CODE VIEW STYLING --- */
+        #code-view {
+            width: 625px; /* Matches canvas width */
+            height: 625px; /* Matches canvas height */
+            background-color: #1e1e1e;
+            color: #9cdcfe;
+            border: 2px solid #444;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        }
+
+        #canvas-container { 
+            position: relative; 
+            display: none; /* Hidden on load */
+        }
 
         canvas { 
             background-color: #000; 
@@ -98,6 +117,8 @@
         <div class="stat-item" style="color:#fff">Progress: <span id="c-base">0</span></div>
     </div>
 
+    <pre id="code-view"></pre>
+
     <div id="canvas-container">
         <canvas id="ecoCanvas"></canvas>
         <div id="overlay">
@@ -110,7 +131,10 @@
         Green = Collectors | Yellow = Builders | Red = Predators | Square = Food | White Box = Carrying Food
     </div>
 
-<script>
+<script id="main-script">
+// --- Fetch and Display the Code Automatically ---
+document.getElementById('code-view').textContent = document.getElementById('main-script').textContent.trim();
+
 const GRID_SIZE = 25;
 const CELL_SIZE = 25; 
 const canvas = document.getElementById('ecoCanvas');
@@ -121,6 +145,7 @@ canvas.width = GRID_SIZE * CELL_SIZE;
 canvas.height = GRID_SIZE * CELL_SIZE;
 
 let running = false;
+let hasStartedOnce = false; // Tracks if we've switched from code view to canvas
 const BASE_POS = { x: 12, y: 12 };
 
 class Agent {
@@ -179,14 +204,12 @@ class Builder extends Agent {
 class Predator extends Agent {
     constructor(x, y) { super(x, y, 100, "#f44336"); }
     update(env) {
-        // 1. Check for prey to eat
         const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y && a.alive);
         if (prey) { 
             prey.alive = false; 
             this.energy = this.maxEnergy + 20; 
         }
 
-        // 2. Hunting Logic: Find nearest worker within 6 squares
         let target = null;
         let minDist = 7;
         env.agents.forEach(a => {
@@ -203,7 +226,7 @@ class Predator extends Agent {
             this.moveRandom();
         }
 
-        this.energy -= 1.2; // Optimized metabolic rate
+        this.energy -= 1.2; 
         if (this.energy <= 0) this.alive = false;
     }
 }
@@ -258,16 +281,37 @@ const world = {
 };
 
 function rand(m) { return Math.floor(Math.random() * m); }
-function resetSim() { world.init(); running = false; world.draw(); }
 
-document.getElementById('btnStart').onclick = () => { running = true; overlay.style.display = 'none'; };
+function resetSim() { 
+    world.init(); 
+    running = false; 
+    
+    // If they hit reset before starting, just redraw the background
+    if (hasStartedOnce) world.draw(); 
+}
+
+document.getElementById('btnStart').onclick = () => { 
+    // The First-Time View Swap
+    if (!hasStartedOnce) {
+        document.getElementById('code-view').style.display = 'none';
+        document.getElementById('canvas-container').style.display = 'block';
+        hasStartedOnce = true;
+    }
+    
+    running = true; 
+    overlay.style.display = 'none'; 
+};
+
 document.getElementById('btnStop').onclick = () => running = false;
 document.getElementById('btnReset').onclick = resetSim;
 
 world.init();
 function loop() {
     if (running) world.update();
-    world.draw();
+    
+    // Only draw to canvas if we've switched away from the code view
+    if (hasStartedOnce) world.draw();
+    
     setTimeout(loop, 110);
 }
 loop();
