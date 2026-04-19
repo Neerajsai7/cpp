@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Balanced Ecosystem: Workers & Predators</title>
+    <title>C++ Ecosystem Simulator</title>
     <style>
         body {
             background-color: #0f0f0f;
@@ -34,12 +34,12 @@
             z-index: 10;
         }
 
-        /* --- NEW CODE VIEW STYLING --- */
+        /* --- CODE VIEW STYLING --- */
         #code-view {
             width: 625px; /* Matches canvas width */
             height: 625px; /* Matches canvas height */
             background-color: #1e1e1e;
-            color: #9cdcfe;
+            color: #dcdcaa; /* A nice C++ syntax color */
             border: 2px solid #444;
             padding: 20px;
             box-sizing: border-box;
@@ -48,8 +48,10 @@
             font-size: 0.8rem;
             white-space: pre-wrap;
             box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+            margin: 0;
         }
 
+        /* --- CANVAS STYLING --- */
         #canvas-container { 
             position: relative; 
             display: none; /* Hidden on load */
@@ -131,10 +133,119 @@
         Green = Collectors | Yellow = Builders | Red = Predators | Square = Food | White Box = Carrying Food
     </div>
 
-<script id="main-script">
-// --- Fetch and Display the Code Automatically ---
-document.getElementById('code-view').textContent = document.getElementById('main-script').textContent.trim();
+<script type="text/plain" id="cpp-source">
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <cstdlib>
+#include <ctime>
+#include <cmath>
+#include <algorithm>
 
+using namespace std;
+
+const int GRID_SIZE = 25;
+const int BASE_X = 12;
+const int BASE_Y = 12;
+
+class Environment;
+
+// 1. BASE ENTITY CLASS
+class Agent : public enable_shared_from_this<Agent> {
+protected:
+    int x, y;
+    double energy;
+    double maxEnergy;
+    char symbol;
+    bool alive;
+
+public:
+    Agent(int startX, int startY, double en, char sym) 
+        : x(startX), y(startY), energy(en), maxEnergy(en), symbol(sym), alive(true) {}
+    
+    virtual ~Agent() = default;
+
+    int getX() const { return x; }
+    int getY() const { return y; }
+    bool isAlive() const { return alive && energy > 0; }
+    void kill() { alive = false; }
+    
+    void moveRandom() {
+        x = max(0, min(GRID_SIZE - 1, x + (rand() % 3) - 1));
+        y = max(0, min(GRID_SIZE - 1, y + (rand() % 3) - 1));
+    }
+
+    virtual void update(Environment& env) = 0;
+};
+
+// 2. RESOURCE STRUCT
+struct Resource { int x, y; };
+
+// 3. ENVIRONMENT CLASS
+class Environment {
+public:
+    vector<shared_ptr<Agent>> agents;
+    vector<Resource> food;
+    int baseResources = 0;
+    double baseConstruction = 0;
+
+    void addAgent(shared_ptr<Agent> agent) { agents.push_back(agent); }
+
+    void spawnFood() {
+        if (rand() % 100 < 50) food.push_back({rand() % GRID_SIZE, rand() % GRID_SIZE});
+    }
+
+    bool update() {
+        spawnFood();
+        for (auto& a : agents) if (a->isAlive()) a->update(*this);
+
+        agents.erase(remove_if(agents.begin(), agents.end(), 
+            [](const shared_ptr<Agent>& a) { return !a->isAlive(); }), agents.end());
+
+        int pCount = count_if(agents.begin(), agents.end(), [](const shared_ptr<Agent>& a){ return a->getSymbol() == 'P'; });
+        return pCount > 0;
+    }
+};
+
+// 4. DERIVED AGENTS
+class Collector : public Agent {
+    bool hasFood = false;
+public:
+    Collector(int x, int y) : Agent(x, y, 100.0, 'C') {}
+    void update(Environment& env) override {
+        // Gathering Logic here...
+    }
+};
+
+class Builder : public Agent {
+public:
+    Builder(int x, int y) : Agent(x, y, 100.0, 'B') {}
+    void update(Environment& env) override {
+        // Building Logic here...
+    }
+};
+
+class Predator : public Agent {
+public:
+    Predator(int x, int y) : Agent(x, y, 100.0, 'P') {}
+    void update(Environment& env) override {
+        // Hunting Logic here...
+    }
+};
+
+int main() {
+    srand(static_cast<unsigned>(time(0)));
+    Environment env;
+    // Initialization and main loop handled by web engine natively...
+    return 0;
+}
+</script>
+
+<script>
+// 1. Fetch the C++ Code from the hidden script tag and display it
+document.getElementById('code-view').textContent = document.getElementById('cpp-source').textContent.trim();
+
+// 2. Simulation Configuration
 const GRID_SIZE = 25;
 const CELL_SIZE = 25; 
 const canvas = document.getElementById('ecoCanvas');
@@ -148,6 +259,7 @@ let running = false;
 let hasStartedOnce = false; // Tracks if we've switched from code view to canvas
 const BASE_POS = { x: 12, y: 12 };
 
+// --- JS ENTITIES (Mirroring the C++ Logic) ---
 class Agent {
     constructor(x, y, energy, color) {
         this.x = x; this.y = y;
@@ -205,10 +317,7 @@ class Predator extends Agent {
     constructor(x, y) { super(x, y, 100, "#f44336"); }
     update(env) {
         const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y && a.alive);
-        if (prey) { 
-            prey.alive = false; 
-            this.energy = this.maxEnergy + 20; 
-        }
+        if (prey) { prey.alive = false; this.energy = this.maxEnergy + 20; }
 
         let target = null;
         let minDist = 7;
@@ -285,19 +394,16 @@ function rand(m) { return Math.floor(Math.random() * m); }
 function resetSim() { 
     world.init(); 
     running = false; 
-    
-    // If they hit reset before starting, just redraw the background
     if (hasStartedOnce) world.draw(); 
 }
 
+// --- BUTTON CONTROLS ---
 document.getElementById('btnStart').onclick = () => { 
-    // The First-Time View Swap
     if (!hasStartedOnce) {
         document.getElementById('code-view').style.display = 'none';
         document.getElementById('canvas-container').style.display = 'block';
         hasStartedOnce = true;
     }
-    
     running = true; 
     overlay.style.display = 'none'; 
 };
@@ -308,10 +414,7 @@ document.getElementById('btnReset').onclick = resetSim;
 world.init();
 function loop() {
     if (running) world.update();
-    
-    // Only draw to canvas if we've switched away from the code view
     if (hasStartedOnce) world.draw();
-    
     setTimeout(loop, 110);
 }
 loop();
