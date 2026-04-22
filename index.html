@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C++ Ecosystem Simulator</title>
+    <title>DSA Project: Linked List Ecosystem</title>
     <style>
         body {
             background-color: #0f0f0f;
@@ -36,10 +36,10 @@
 
         /* --- CODE VIEW STYLING --- */
         #code-view {
-            width: 625px; /* Matches canvas width */
-            height: 625px; /* Matches canvas height */
+            width: 450px; 
+            height: 450px; 
             background-color: #1e1e1e;
-            color: #dcdcaa; /* A nice C++ syntax color */
+            color: #9cdcfe;
             border: 2px solid #444;
             padding: 20px;
             box-sizing: border-box;
@@ -60,364 +60,489 @@
         canvas { 
             background-color: #000; 
             border: 2px solid #444;
-            image-rendering: pixelated;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
-
-        #overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 20;
-            border: 2px solid #f44336;
-        }
-
-        #overlay h2 { color: #f44336; margin-bottom: 20px; letter-spacing: 2px; }
 
         button {
-            padding: 10px 20px;
+            padding: 8px 16px;
             cursor: pointer;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             font-weight: bold;
             transition: 0.2s;
-            margin: 0 5px;
             text-transform: uppercase;
         }
 
         #btnStart { background: #4CAF50; color: white; }
         #btnStop { background: #f44336; color: white; }
         #btnReset { background: #2196F3; color: white; }
-        .btn-retry { background: #ffffff; color: #000; }
+        
+        .status { font-weight: bold; color: #ffeb3b; min-width: 150px; text-align: center; }
 
-        .stat-item { font-size: 0.9rem; font-weight: bold; }
-        .green { color: #4CAF50; }
-        .yellow { color: #FFEB3B; }
-        .red { color: #f44336; }
-
-        .legend { margin-top: 10px; font-size: 0.8rem; color: #888; }
+        .legend { margin-top: 15px; font-size: 0.9rem; color: #aaa; }
+        .legend span { margin: 0 10px; }
+        .c-p { color: #f44336; font-weight: bold; }
+        .c-c { color: #4CAF50; font-weight: bold; }
+        .c-b { color: #FFEB3B; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h1>Autonomous Ecosystem Simulator</h1>
+        <h1>DSA Linked List Ecosystem</h1>
     </div>
 
     <div class="ui-panel">
-        <div class="controls">
-            <button id="btnStart">Start</button>
-            <button id="btnStop">Stop</button>
-            <button id="btnReset">Reset</button>
-        </div>
-        <div class="stat-item green">Collectors: <span id="c-coll">0</span></div>
-        <div class="stat-item yellow">Builders: <span id="c-build">0</span></div>
-        <div class="stat-item red">Predators: <span id="c-pred">0</span></div>
-        <div class="stat-item" style="color:#fff">Progress: <span id="c-base">0</span></div>
+        <button id="btnStart">Start</button>
+        <button id="btnStop">Stop</button>
+        <button id="btnReset">Reset</button>
+        <div class="status" id="statusText">Ready</div>
     </div>
 
     <pre id="code-view"></pre>
 
     <div id="canvas-container">
-        <canvas id="ecoCanvas"></canvas>
-        <div id="overlay">
-            <h2>PREDATORS EXTINCT</h2>
-            <button class="btn-retry" onclick="resetSim()">Restart Simulation</button>
-        </div>
+        <canvas id="gridCanvas"></canvas>
     </div>
 
     <div class="legend">
-        Green = Collectors | Yellow = Builders | Red = Predators | Square = Food | White Box = Carrying Food
+        <span><span class="c-p">P</span> = Predator</span>
+        <span><span class="c-c">C</span> = Collector</span>
+        <span><span class="c-b">B</span> = Builder</span>
     </div>
 
-<script type="text/plain" id="cpp-source">
-#include <iostream>
-#include <vector>
-#include <memory>
-#include <cstdlib>
-#include <ctime>
-#include <cmath>
-#include <algorithm>
+<script type="text/plain" id="c-source">
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <unistd.h> // for sleep()
 
-using namespace std;
+#define N 10
 
-const int GRID_SIZE = 25;
-const int BASE_X = 12;
-const int BASE_Y = 12;
-
-class Environment;
-
-// 1. BASE ENTITY CLASS
-class Agent : public enable_shared_from_this<Agent> {
-protected:
+struct node {
     int x, y;
-    double energy;
-    double maxEnergy;
-    char symbol;
-    bool alive;
-
-public:
-    Agent(int startX, int startY, double en, char sym) 
-        : x(startX), y(startY), energy(en), maxEnergy(en), symbol(sym), alive(true) {}
-    
-    virtual ~Agent() = default;
-
-    int getX() const { return x; }
-    int getY() const { return y; }
-    bool isAlive() const { return alive && energy > 0; }
-    void kill() { alive = false; }
-    
-    void moveRandom() {
-        x = max(0, min(GRID_SIZE - 1, x + (rand() % 3) - 1));
-        y = max(0, min(GRID_SIZE - 1, y + (rand() % 3) - 1));
-    }
-
-    virtual void update(Environment& env) = 0;
+    char type;
+    int hunger;
+    struct node* next;
 };
 
-// 2. RESOURCE STRUCT
-struct Resource { int x, y; };
+struct node* head = NULL;
 
-// 3. ENVIRONMENT CLASS
-class Environment {
-public:
-    vector<shared_ptr<Agent>> agents;
-    vector<Resource> food;
-    int baseResources = 0;
-    double baseConstruction = 0;
+int dx[4] = {-1, 1, 0, 0};
+int dy[4] = {0, 0, -1, 1};
 
-    void addAgent(shared_ptr<Agent> agent) { agents.push_back(agent); }
+void add(int x, int y, char type)
+{
+    struct node* temp = (struct node*)malloc(sizeof(struct node));
+    temp->x = x;
+    temp->y = y;
+    temp->type = type;
+    temp->hunger = 0;
+    temp->next = head;
+    head = temp;
+}
 
-    void spawnFood() {
-        if (rand() % 100 < 50) food.push_back({rand() % GRID_SIZE, rand() % GRID_SIZE});
+void remove_node(struct node* prev, struct node* curr)
+{
+    if(prev == NULL)
+        head = curr->next;
+    else
+        prev->next = curr->next;
+
+    free(curr);
+}
+
+int valid(int x, int y)
+{
+    return x>=0 && x<N && y>=0 && y<N;
+}
+
+struct node* find_at(int x, int y)
+{
+    struct node* temp = head;
+    while(temp)
+    {
+        if(temp->x==x && temp->y==y)
+            return temp;
+        temp = temp->next;
+    }
+    return NULL;
+}
+
+void print_grid()
+{
+    char grid[N][N];
+    int i,j;
+
+    for(i=0;i<N;i++)
+        for(j=0;j<N;j++)
+            grid[i][j]='.';
+
+    struct node* temp = head;
+    while(temp)
+    {
+        grid[temp->x][temp->y] = temp->type;
+        temp = temp->next;
     }
 
-    bool update() {
-        spawnFood();
-        for (auto& a : agents) if (a->isAlive()) a->update(*this);
-
-        agents.erase(remove_if(agents.begin(), agents.end(), 
-            [](const shared_ptr<Agent>& a) { return !a->isAlive(); }), agents.end());
-
-        int pCount = count_if(agents.begin(), agents.end(), [](const shared_ptr<Agent>& a){ return a->getSymbol() == 'P'; });
-        return pCount > 0;
+    for(i=0;i<N;i++)
+    {
+        for(j=0;j<N;j++)
+            printf("%c ",grid[i][j]);
+        printf("\n");
     }
-};
+    printf("\n");
+}
 
-// 4. DERIVED AGENTS
-class Collector : public Agent {
-    bool hasFood = false;
-public:
-    Collector(int x, int y) : Agent(x, y, 100.0, 'C') {}
-    void update(Environment& env) override {
-        // Gathering Logic here...
+void simulate()
+{
+    while(1)
+    {
+        struct node* curr = head;
+        struct node* prev = NULL;
+
+        while(curr)
+        {
+            int dir = rand()%4;
+            int nx = curr->x + dx[dir];
+            int ny = curr->y + dy[dir];
+
+            struct node* other = NULL;
+            if(valid(nx,ny))
+                other = find_at(nx,ny);
+
+            if(curr->type=='P')
+            {
+                int foodx[4], foody[4];
+                int count = 0;
+
+                for(int i=0;i<4;i++)
+                {
+                    int tx = curr->x + dx[i];
+                    int ty = curr->y + dy[i];
+
+                    if(valid(tx,ty))
+                    {
+                        struct node* t = find_at(tx,ty);
+                        if(t && (t->type=='C' || t->type=='B'))
+                        {
+                            foodx[count] = tx;
+                            foody[count] = ty;
+                            count++;
+                        }
+                    }
+                }
+
+                if(count > 0)
+                {
+                    int choice = rand()%count;
+                    int ex = foodx[choice];
+                    int ey = foody[choice];
+
+                    struct node* t = head;
+                    struct node* p = NULL;
+
+                    while(t && !(t->x==ex && t->y==ey))
+                    {
+                        p = t;
+                        t = t->next;
+                    }
+
+                    if(t)
+                        remove_node(p,t);
+
+                    curr->x = ex;
+                    curr->y = ey;
+                    curr->hunger = 0;
+                }
+                else
+                {
+                    if(valid(nx,ny) && !other)
+                    {
+                        curr->x = nx;
+                        curr->y = ny;
+                    }
+                    curr->hunger++;
+                }
+            }
+            else
+            {
+                if(valid(nx,ny) && !other)
+                {
+                    curr->x = nx;
+                    curr->y = ny;
+                }
+            }
+
+            // predator dies
+            if(curr->type=='P' && curr->hunger > 3)
+            {
+                struct node* temp = curr->next;
+                remove_node(prev, curr);
+                curr = temp;
+                print_grid();
+                usleep(200000);
+                continue;
+            }
+
+            print_grid();       // 🔥 PRINT AFTER EVERY ACTION
+            usleep(200000);    // small delay for animation
+
+            prev = curr;
+            curr = curr->next;
+        }
+
+        // stop conditions
+        int p=0,c=0,b=0;
+        struct node* t = head;
+        while(t)
+        {
+            if(t->type=='P') p++;
+            else if(t->type=='C') c++;
+            else if(t->type=='B') b++;
+            t = t->next;
+        }
+
+        if(p==0 || (c==0 && b==0))
+        {
+            printf("Simulation ended\n");
+            return;
+        }
     }
-};
+}
 
-class Builder : public Agent {
-public:
-    Builder(int x, int y) : Agent(x, y, 100.0, 'B') {}
-    void update(Environment& env) override {
-        // Building Logic here...
-    }
-};
+int main()
+{
+    srand(time(NULL));
 
-class Predator : public Agent {
-public:
-    Predator(int x, int y) : Agent(x, y, 100.0, 'P') {}
-    void update(Environment& env) override {
-        // Hunting Logic here...
-    }
-};
+    for(int i=0;i<3;i++)
+        add(rand()%N, rand()%N, 'P');
 
-int main() {
-    srand(static_cast<unsigned>(time(0)));
-    Environment env;
-    // Initialization and main loop handled by web engine natively...
+    for(int i=0;i<8;i++)
+        add(rand()%N, rand()%N, 'C');
+
+    for(int i=0;i<6;i++)
+        add(rand()%N, rand()%N, 'B');
+
+    print_grid();
+    simulate();
+
     return 0;
 }
 </script>
 
 <script>
-// 1. Fetch the C++ Code from the hidden script tag and display it
-document.getElementById('code-view').textContent = document.getElementById('cpp-source').textContent.trim();
+// Load C code into the viewer
+document.getElementById('code-view').textContent = document.getElementById('c-source').textContent.trim();
 
-// 2. Simulation Configuration
-const GRID_SIZE = 25;
-const CELL_SIZE = 25; 
-const canvas = document.getElementById('ecoCanvas');
+// --- JS SINGLY LINKED LIST (Mirroring the C struct) ---
+class Node {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type; 
+        this.hunger = 0;
+        this.next = null;
+    }
+}
+
+class LinkedList {
+    constructor() { this.head = null; }
+    add(x, y, type) {
+        const temp = new Node(x, y, type);
+        temp.next = this.head;
+        this.head = temp;
+    }
+    removeNode(prev, curr) {
+        if (prev === null) this.head = curr.next;
+        else prev.next = curr.next;
+    }
+    findAt(x, y) {
+        let temp = this.head;
+        while (temp !== null) {
+            if (temp.x === x && temp.y === y) return temp;
+            temp = temp.next;
+        }
+        return null;
+    }
+    clear() { this.head = null; }
+}
+
+// --- SIMULATION CONFIG ---
+const N = 10; 
+const CELL_SIZE = 45; 
+const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
-const overlay = document.getElementById('overlay');
+canvas.width = N * CELL_SIZE;
+canvas.height = N * CELL_SIZE;
 
-canvas.width = GRID_SIZE * CELL_SIZE;
-canvas.height = GRID_SIZE * CELL_SIZE;
+const dx = [-1, 1, 0, 0];
+const dy = [0, 0, -1, 1];
 
+const list = new LinkedList();
 let running = false;
-let hasStartedOnce = false; // Tracks if we've switched from code view to canvas
-const BASE_POS = { x: 12, y: 12 };
+let hasStartedOnce = false;
 
-// --- JS ENTITIES (Mirroring the C++ Logic) ---
-class Agent {
-    constructor(x, y, energy, color) {
-        this.x = x; this.y = y;
-        this.energy = energy; this.maxEnergy = energy;
-        this.color = color; this.alive = true;
-    }
-    moveRandom() {
-        this.x = Math.max(0, Math.min(GRID_SIZE - 1, this.x + (Math.floor(Math.random() * 3) - 1)));
-        this.y = Math.max(0, Math.min(GRID_SIZE - 1, this.y + (Math.floor(Math.random() * 3) - 1)));
-    }
-}
+function valid(x, y) { return x >= 0 && x < N && y >= 0 && y < N; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-class Collector extends Agent {
-    constructor(x, y) { super(x, y, 100, "#4CAF50"); this.hasFood = false; }
-    update(env) {
-        if (!this.hasFood) {
-            const fIdx = env.food.findIndex(f => f.x === this.x && f.y === this.y);
-            if (fIdx !== -1) { this.hasFood = true; env.food.splice(fIdx, 1); }
-            this.moveRandom();
-        } else {
-            if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
-            if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
-            if (this.x === BASE_POS.x && this.y === BASE_POS.y) {
-                this.hasFood = false;
-                env.baseResources += 40;
-                this.energy = this.maxEnergy;
-            }
+function drawGrid() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = "#333";
+    for (let i = 0; i <= N; i++) {
+        ctx.beginPath(); ctx.moveTo(i * CELL_SIZE, 0); ctx.lineTo(i * CELL_SIZE, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * CELL_SIZE); ctx.lineTo(canvas.width, i * CELL_SIZE); ctx.stroke();
+    }
+
+    let temp = list.head;
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    while (temp !== null) {
+        const px = temp.y * CELL_SIZE + CELL_SIZE / 2; 
+        const py = temp.x * CELL_SIZE + CELL_SIZE / 2;
+
+        if (temp.type === 'P') ctx.fillStyle = "#f44336"; 
+        else if (temp.type === 'C') ctx.fillStyle = "#4CAF50"; 
+        else if (temp.type === 'B') ctx.fillStyle = "#FFEB3B"; 
+        
+        ctx.fillText(temp.type, px, py);
+        
+        if (temp.type === 'P') {
+            ctx.fillStyle = "white";
+            ctx.font = "12px Arial";
+            ctx.fillText(temp.hunger, px + 14, py - 14);
+            ctx.font = "bold 24px Arial"; 
         }
-        this.energy -= 0.3;
-        if (this.energy <= 0) this.alive = false;
+        temp = temp.next;
     }
 }
 
-class Builder extends Agent {
-    constructor(x, y) { super(x, y, 100, "#FFEB3B"); }
-    update(env) {
-        const dist = Math.abs(this.x - BASE_POS.x) + Math.abs(this.y - BASE_POS.y);
-        if (dist > 3) {
-            if (this.x < BASE_POS.x) this.x++; else if (this.x > BASE_POS.x) this.x--;
-            if (this.y < BASE_POS.y) this.y++; else if (this.y > BASE_POS.y) this.y--;
-        } else {
-            this.moveRandom();
-            if (env.baseResources > 0) {
-                env.baseResources -= 1; 
-                env.baseConstruction += 0.15;
-                this.energy = Math.min(this.maxEnergy, this.energy + 1);
+// --- CORE ASYNC SIMULATION LOOP ---
+async function simulate() {
+    while (running) {
+        let curr = list.head;
+        let prev = null;
+
+        while (curr !== null && running) {
+            let dir = Math.floor(Math.random() * 4);
+            let nx = curr.x + dx[dir];
+            let ny = curr.y + dy[dir];
+
+            let other = null;
+            if (valid(nx, ny)) other = list.findAt(nx, ny);
+
+            if (curr.type === 'P') {
+                let foodx = [], foody = [];
+
+                for (let i = 0; i < 4; i++) {
+                    let tx = curr.x + dx[i];
+                    let ty = curr.y + dy[i];
+                    if (valid(tx, ty)) {
+                        let t = list.findAt(tx, ty);
+                        if (t !== null && (t.type === 'C' || t.type === 'B')) {
+                            foodx.push(tx); foody.push(ty);
+                        }
+                    }
+                }
+
+                if (foodx.length > 0) {
+                    let choice = Math.floor(Math.random() * foodx.length);
+                    let ex = foodx[choice];
+                    let ey = foody[choice];
+
+                    let t = list.head;
+                    let p = null;
+
+                    while (t !== null && !(t.x === ex && t.y === ey)) {
+                        p = t; t = t.next;
+                    }
+
+                    if (t !== null) list.removeNode(p, t);
+
+                    curr.x = ex; curr.y = ey; curr.hunger = 0;
+                } else {
+                    if (valid(nx, ny) && !other) { curr.x = nx; curr.y = ny; }
+                    curr.hunger++;
+                }
+            } else {
+                if (valid(nx, ny) && !other) { curr.x = nx; curr.y = ny; }
             }
-        }
-        this.energy -= 0.2;
-        if (this.energy <= 0) this.alive = false;
-    }
-}
 
-class Predator extends Agent {
-    constructor(x, y) { super(x, y, 100, "#f44336"); }
-    update(env) {
-        const prey = env.agents.find(a => (a instanceof Collector || a instanceof Builder) && a.x === this.x && a.y === this.y && a.alive);
-        if (prey) { prey.alive = false; this.energy = this.maxEnergy + 20; }
-
-        let target = null;
-        let minDist = 7;
-        env.agents.forEach(a => {
-            if ((a instanceof Collector || a instanceof Builder) && a.alive) {
-                let d = Math.abs(this.x - a.x) + Math.abs(this.y - a.y);
-                if (d < minDist) { minDist = d; target = a; }
+            if (curr.type === 'P' && curr.hunger > 3) {
+                let temp = curr.next;
+                list.removeNode(prev, curr);
+                curr = temp; 
+                drawGrid();
+                await sleep(200); 
+                continue;
             }
-        });
 
-        if (target) {
-            if (this.x < target.x) this.x++; else if (this.x > target.x) this.x--;
-            if (this.y < target.y) this.y++; else if (this.y > target.y) this.y--;
-        } else {
-            this.moveRandom();
+            drawGrid(); 
+            await sleep(200);
+
+            prev = curr;
+            curr = curr.next;
         }
 
-        this.energy -= 1.2; 
-        if (this.energy <= 0) this.alive = false;
-    }
-}
+        let p = 0, c = 0, b = 0;
+        let t = list.head;
+        while (t !== null) {
+            if (t.type === 'P') p++;
+            else if (t.type === 'C') c++;
+            else if (t.type === 'B') b++;
+            t = t.next;
+        }
 
-const world = {
-    agents: [], food: [], baseResources: 0, baseConstruction: 0,
-    init() {
-        this.agents = []; this.food = []; this.baseResources = 0; this.baseConstruction = 0;
-        for(let i=0; i<15; i++) this.agents.push(new Collector(rand(GRID_SIZE), rand(GRID_SIZE)));
-        for(let i=0; i<8; i++) this.agents.push(new Builder(BASE_POS.x, BASE_POS.y));
-        for(let i=0; i<6; i++) this.agents.push(new Predator(rand(GRID_SIZE), rand(GRID_SIZE)));
-        overlay.style.display = 'none';
-    },
-    update() {
-        if (Math.random() < 0.5) this.food.push({x: rand(GRID_SIZE), y: rand(GRID_SIZE)});
-        this.agents.forEach(a => { if (a.alive) a.update(this); });
-        this.agents = this.agents.filter(a => a.alive);
-
-        if (this.agents.filter(a => a instanceof Predator).length === 0) {
+        if (p === 0 || (c === 0 && b === 0)) {
+            document.getElementById('statusText').innerText = "Simulation Ended";
+            document.getElementById('statusText').style.color = "#f44336";
             running = false;
-            overlay.style.display = 'flex';
+            return;
         }
-    },
-    draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "#1a1a1a";
-        for (let i = 0; i <= GRID_SIZE; i++) {
-            ctx.beginPath(); ctx.moveTo(i * CELL_SIZE, 0); ctx.lineTo(i * CELL_SIZE, canvas.height); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, i * CELL_SIZE); ctx.lineTo(canvas.width, i * CELL_SIZE); ctx.stroke();
-        }
-        const bSize = 15 + Math.floor(this.baseConstruction / 5);
-        ctx.fillStyle = "#333";
-        ctx.fillRect(BASE_POS.x * CELL_SIZE - bSize/4, BASE_POS.y * CELL_SIZE - bSize/4, bSize, bSize);
-        ctx.fillStyle = "#4CAF50";
-        this.food.forEach(f => ctx.fillRect(f.x * CELL_SIZE + 8, f.y * CELL_SIZE + 8, 9, 9));
-        this.agents.forEach(a => {
-            ctx.fillStyle = a.color;
-            ctx.beginPath(); ctx.arc(a.x * CELL_SIZE + 12.5, a.y * CELL_SIZE + 12.5, 7, 0, 7); ctx.fill();
-            if (a instanceof Collector && a.hasFood) {
-                ctx.fillStyle = "#fff"; ctx.fillRect(a.x * CELL_SIZE + 10, a.y * CELL_SIZE + 10, 5, 5);
-            }
-            ctx.fillStyle = "rgba(255,255,255,0.2)";
-            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, 15, 2);
-            ctx.fillStyle = a.color;
-            ctx.fillRect(a.x * CELL_SIZE + 5, a.y * CELL_SIZE + 2, (Math.max(0, a.energy) / a.maxEnergy) * 15, 2);
-        });
-        document.getElementById('c-coll').innerText = this.agents.filter(a => a instanceof Collector).length;
-        document.getElementById('c-build').innerText = this.agents.filter(a => a instanceof Builder).length;
-        document.getElementById('c-pred').innerText = this.agents.filter(a => a instanceof Predator).length;
-        document.getElementById('c-base').innerText = Math.floor(this.baseConstruction);
     }
-};
-
-function rand(m) { return Math.floor(Math.random() * m); }
-
-function resetSim() { 
-    world.init(); 
-    running = false; 
-    if (hasStartedOnce) world.draw(); 
 }
 
-// --- BUTTON CONTROLS ---
-document.getElementById('btnStart').onclick = () => { 
+// --- CONTROLS ---
+function init() {
+    list.clear();
+    running = false;
+    document.getElementById('statusText').innerText = "Ready";
+    document.getElementById('statusText').style.color = "#ffeb3b";
+
+    for (let i = 0; i < 3; i++) list.add(Math.floor(Math.random() * N), Math.floor(Math.random() * N), 'P');
+    for (let i = 0; i < 8; i++) list.add(Math.floor(Math.random() * N), Math.floor(Math.random() * N), 'C');
+    for (let i = 0; i < 6; i++) list.add(Math.floor(Math.random() * N), Math.floor(Math.random() * N), 'B');
+
+    if (hasStartedOnce) drawGrid();
+}
+
+document.getElementById('btnStart').onclick = () => {
     if (!hasStartedOnce) {
         document.getElementById('code-view').style.display = 'none';
         document.getElementById('canvas-container').style.display = 'block';
         hasStartedOnce = true;
+        drawGrid();
     }
-    running = true; 
-    overlay.style.display = 'none'; 
+    if (!running) {
+        running = true;
+        document.getElementById('statusText').innerText = "Running...";
+        document.getElementById('statusText').style.color = "#4CAF50";
+        simulate(); 
+    }
 };
 
-document.getElementById('btnStop').onclick = () => running = false;
-document.getElementById('btnReset').onclick = resetSim;
+document.getElementById('btnStop').onclick = () => {
+    running = false;
+    document.getElementById('statusText').innerText = "Stopped";
+    document.getElementById('statusText').style.color = "#f44336";
+};
 
-world.init();
-function loop() {
-    if (running) world.update();
-    if (hasStartedOnce) world.draw();
-    setTimeout(loop, 110);
-}
-loop();
+document.getElementById('btnReset').onclick = init;
+
+init();
 </script>
 </body>
 </html>
